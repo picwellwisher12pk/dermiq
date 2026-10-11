@@ -1,3 +1,3 @@
-export const APP_VERSION = "0.5.1";
+export const APP_VERSION = "0.5.2";
 export const APP_NAME = "DermIQ";
 export const APP_TAGLINE = "Next-Generation AI Skin Analysis & Virtual Skincare";

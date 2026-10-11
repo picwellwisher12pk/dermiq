@@ -12,7 +12,7 @@ import {
   CheckCircle2,
   Camera,
   Eye,
-  Info
+  SlidersHorizontal
 } from "lucide-react";
 import { SkinAnalysisResult } from "@/types/skin";
 import { useSkinScan } from "@/context/SkinScanContext";
@@ -28,7 +28,8 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
   const data = result || analysisResult;
 
   const [activeMarkerId, setActiveMarkerId] = useState<string | null>(null);
-  const [showOverlays, setShowOverlays] = useState(true);
+  // Default to clean photo (no dots)
+  const [showOverlays, setShowOverlays] = useState(false);
   const [selectedMetricFilter, setSelectedMetricFilter] = useState<string | null>(null);
 
   if (!data) {
@@ -90,7 +91,7 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
 
   return (
     <div className="w-full space-y-6">
-      {/* 1. First-Screen Mobile Score Card: Immediate glance without scrolling */}
+      {/* 1. Header & Overall Health Card */}
       <div className="rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white p-4 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="flex items-center justify-between gap-3 mb-3">
           <div className="flex items-center gap-2">
@@ -147,10 +148,10 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
 
           <div className="min-w-0 flex-1">
             <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-tight">
-              Skin Health: {data.overallScore >= 70 ? "Healthy & Balanced" : "Needs Care"}
+              {data.overallScore >= 75 ? "Optimal Balance" : data.overallScore >= 60 ? "Good Condition" : "Needs Targeted Care"}
             </h3>
             <p className="text-xs text-slate-500 mt-1 line-clamp-2">
-              Focus area: <span className="font-semibold text-slate-800 dark:text-slate-200">{data.primaryConcern}</span>.
+              Primary focus: <span className="font-semibold text-slate-800 dark:text-slate-200">{data.primaryConcern}</span>.
             </p>
             <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium mt-0.5">
               Apparent Skin Age: ~{data.skinAgeEstimate} years
@@ -159,10 +160,26 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
         </div>
       </div>
 
-      {/* 2. Interactive Photo & Skin Details: Side-by-side or stacked cleanly */}
+      {/* 2. Interactive Photo & Skin Details */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
-        {/* Photo View with Tap-to-Inspect Beacons */}
+        {/* Photo View with Optional Pin Highlights */}
         <div className="md:col-span-5 flex flex-col">
+          <div className="flex items-center justify-between mb-2 px-1">
+            <span className="text-xs font-semibold text-slate-500">Your Photo</span>
+            <button
+              type="button"
+              onClick={() => setShowOverlays(!showOverlays)}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                showOverlays
+                  ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
+              }`}
+            >
+              <Eye className="h-3.5 w-3.5" />
+              {showOverlays ? "Hide Focus Points" : "Show Focus Points"}
+            </button>
+          </div>
+
           <div className="relative aspect-[4/5] w-full max-w-sm mx-auto rounded-2xl overflow-hidden bg-slate-950 shadow-md ring-1 ring-slate-800">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -171,6 +188,7 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
               className="h-full w-full object-cover"
             />
 
+            {/* Render markers only if user explicitly turns them on */}
             {showOverlays &&
               filteredLandmarks.map((lm) => {
                 const isActive = activeMarkerId === lm.id;
@@ -187,14 +205,14 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
                       }`}
                       aria-label={lm.label}
                     >
-                      <span className="relative flex h-5 w-5">
+                      <span className="relative flex h-4 w-4">
                         <span
                           className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
                             lm.type === "spot" ? "bg-rose-400" : lm.type === "wrinkle" ? "bg-amber-400" : "bg-teal-400"
                           }`}
                         />
                         <span
-                          className={`relative inline-flex rounded-full h-5 w-5 border-2 border-white shadow ${
+                          className={`relative inline-flex rounded-full h-4 w-4 border-2 border-white shadow ${
                             lm.type === "spot" ? "bg-rose-500" : lm.type === "wrinkle" ? "bg-amber-500" : "bg-teal-500"
                           }`}
                         />
@@ -221,7 +239,9 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
             )}
           </div>
           <p className="text-[11px] text-center text-slate-400 mt-1.5">
-            Tap the colored dots on your photo to see details.
+            {showOverlays
+              ? "Tap any highlighted point to see localized details."
+              : "Clean photo view. Tap 'Show Focus Points' above to inspect detected regions."}
           </p>
         </div>
 
@@ -229,7 +249,7 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
         <div className="md:col-span-7 flex flex-col space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Skin Areas (Tap to see products)
+              Skin Assessment (Tap to filter products)
             </span>
             {selectedMetricFilter && (
               <button
@@ -248,7 +268,13 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
                 <button
                   key={metric.id}
                   type="button"
-                  onClick={() => setSelectedMetricFilter(isSelected ? null : metric.id)}
+                  onClick={() => {
+                    setSelectedMetricFilter(isSelected ? null : metric.id);
+                    if (!isSelected) {
+                      // Automatically enable overlay for the selected concern
+                      setShowOverlays(true);
+                    }
+                  }}
                   className={`p-3 rounded-xl border text-left transition-all ${
                     isSelected
                       ? "border-emerald-500 bg-emerald-50/60 ring-2 ring-emerald-500/20 dark:bg-emerald-950/40"
@@ -307,10 +333,10 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
           products={recommendedProducts}
           title={
             selectedMetricFilter
-              ? `Best Products for ${selectedMetricFilter}`
+              ? `Best Products for ${selectedMetricFilter.toUpperCase()}`
               : "Recommended For Your Skin"
           }
-          subtitle="Selected based on your photo. Tap 'Try on My Face' to see the difference before buying."
+          subtitle="Selected based on your photo. Tap 'Try on Face' to see the difference before buying."
         />
       </div>
     </div>
