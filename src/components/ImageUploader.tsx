@@ -10,7 +10,10 @@ import {
   ArrowRight,
   CheckCircle2,
   SwitchCamera,
-  RotateCcw
+  RotateCcw,
+  Sun,
+  SunMedium,
+  UserCheck
 } from "lucide-react";
 import { useSkinScan } from "@/context/SkinScanContext";
 
@@ -49,6 +52,10 @@ export default function ImageUploader({ onScanComplete }: ImageUploaderProps) {
   const [cameraActive, setCameraActive] = useState(false);
   const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
   const [hasMultipleCameras, setHasMultipleCameras] = useState(false);
+  const [liveGuidance, setLiveGuidance] = useState<{
+    status: "optimal" | "dark" | "glare" | "align";
+    message: string;
+  }>({ status: "align", message: "Center face in oval" });
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -147,6 +154,74 @@ export default function ImageUploader({ onScanComplete }: ImageUploaderProps) {
       stopCameraStream();
     };
   }, []);
+
+  // Real-time Optical Guidance Analyzer (Lighting & Face Centering)
+  useEffect(() => {
+    if (!cameraActive || !videoRef.current) return;
+
+    let isMounted = true;
+    const sampleCanvas = document.createElement("canvas");
+    sampleCanvas.width = 64;
+    sampleCanvas.height = 64;
+    const sampleCtx = sampleCanvas.getContext("2d", { willReadFrequently: true });
+
+    const interval = setInterval(() => {
+      const video = videoRef.current;
+      if (!video || video.readyState < 2 || !sampleCtx) return;
+
+      try {
+        sampleCtx.drawImage(video, 0, 0, 64, 64);
+        const imgData = sampleCtx.getImageData(0, 0, 64, 64);
+        const data = imgData.data;
+
+        let totalLuminance = 0;
+        let centerSkinCount = 0;
+        let centerTotal = 0;
+
+        for (let y = 0; y < 64; y++) {
+          for (let x = 0; x < 64; x++) {
+            const idx = (y * 64 + x) * 4;
+            const r = data[idx];
+            const g = data[idx + 1];
+            const b = data[idx + 2];
+            const Y = 0.299 * r + 0.587 * g + 0.114 * b;
+            totalLuminance += Y;
+
+            // Check central face oval
+            const dx = (x - 32) / 18;
+            const dy = (y - 32) / 22;
+            if (dx * dx + dy * dy <= 1.0) {
+              centerTotal++;
+              const isSkin = r > 70 && g > 42 && b > 22 && r > g && r > b && r - g > 10;
+              if (isSkin) centerSkinCount++;
+            }
+          }
+        }
+
+        const avgY = totalLuminance / (64 * 64);
+        const skinRatio = centerTotal > 0 ? centerSkinCount / centerTotal : 0;
+
+        if (!isMounted) return;
+
+        if (avgY < 58) {
+          setLiveGuidance({ status: "dark", message: "Too dark — face towards light" });
+        } else if (avgY > 222) {
+          setLiveGuidance({ status: "glare", message: "Harsh glare — avoid direct flash" });
+        } else if (skinRatio < 0.18) {
+          setLiveGuidance({ status: "align", message: "Center face in oval" });
+        } else {
+          setLiveGuidance({ status: "optimal", message: "Perfect lighting & alignment" });
+        }
+      } catch (e) {
+        // Ignore canvas draw race condition
+      }
+    }, 350);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [cameraActive]);
 
   const handleFileChange = (file?: File) => {
     setErrorMessage(null);
@@ -284,9 +359,17 @@ export default function ImageUploader({ onScanComplete }: ImageUploaderProps) {
                   }`}
                 />
 
-                {/* Oval Guide Overlay */}
+                {/* Dynamic Oval Guide Overlay */}
                 <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                  <div className="w-[66%] h-[74%] rounded-[50%] border-2 border-dashed border-emerald-400/80 shadow-[0_0_20px_rgba(16,185,129,0.3)] animate-pulse" />
+                  <div
+                    className={`w-[66%] h-[74%] rounded-[50%] transition-all duration-300 ${
+                      liveGuidance.status === "optimal"
+                        ? "border-2 border-solid border-emerald-400 shadow-[0_0_30px_rgba(16,185,129,0.6)]"
+                        : liveGuidance.status === "dark" || liveGuidance.status === "glare"
+                        ? "border-2 border-dashed border-amber-400/90 shadow-[0_0_20px_rgba(245,158,11,0.35)]"
+                        : "border-2 border-dashed border-slate-300/80 shadow-[0_0_15px_rgba(255,255,255,0.2)]"
+                    }`}
+                  />
                 </div>
 
                 {hasMultipleCameras && (
@@ -300,9 +383,27 @@ export default function ImageUploader({ onScanComplete }: ImageUploaderProps) {
                   </button>
                 )}
 
-                <div className="absolute bottom-2.5 left-0 right-0 text-center pointer-events-none">
-                  <span className="inline-block bg-slate-950/75 px-3 py-1 rounded-full text-[11px] font-medium text-emerald-300 backdrop-blur-sm">
-                    Center face in oval
+                {/* Live Guidance Badge */}
+                <div className="absolute bottom-2.5 left-0 right-0 text-center pointer-events-none flex justify-center px-4">
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold backdrop-blur-md transition-all shadow ${
+                      liveGuidance.status === "optimal"
+                        ? "bg-emerald-950/85 text-emerald-300 border border-emerald-500/40"
+                        : liveGuidance.status === "dark" || liveGuidance.status === "glare"
+                        ? "bg-amber-950/85 text-amber-300 border border-amber-500/40"
+                        : "bg-slate-950/80 text-slate-200 border border-white/20"
+                    }`}
+                  >
+                    {liveGuidance.status === "optimal" ? (
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 animate-pulse" />
+                    ) : liveGuidance.status === "dark" ? (
+                      <Sun className="h-3.5 w-3.5 text-amber-400" />
+                    ) : liveGuidance.status === "glare" ? (
+                      <SunMedium className="h-3.5 w-3.5 text-amber-400" />
+                    ) : (
+                      <UserCheck className="h-3.5 w-3.5 text-slate-300" />
+                    )}
+                    {liveGuidance.message}
                   </span>
                 </div>
               </div>
@@ -313,7 +414,11 @@ export default function ImageUploader({ onScanComplete }: ImageUploaderProps) {
                   type="button"
                   onClick={capturePhoto}
                   disabled={!cameraActive}
-                  className="flex items-center justify-center h-14 w-14 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 text-white shadow-lg hover:scale-105 active:scale-95 transition-all ring-4 ring-emerald-500/20 disabled:opacity-50"
+                  className={`flex items-center justify-center h-14 w-14 rounded-full text-white shadow-lg transition-all active:scale-95 disabled:opacity-50 ${
+                    liveGuidance.status === "optimal"
+                      ? "bg-gradient-to-tr from-emerald-600 to-teal-500 ring-4 ring-emerald-400/60 shadow-emerald-500/50 scale-105"
+                      : "bg-slate-900 ring-4 ring-slate-800/40"
+                  }`}
                   aria-label="Take Photo"
                 >
                   <Camera className="h-6 w-6" />

@@ -12,11 +12,13 @@ import {
   CheckCircle2,
   Camera,
   Eye,
-  SlidersHorizontal
+  SlidersHorizontal,
+  FileText
 } from "lucide-react";
 import { SkinAnalysisResult } from "@/types/skin";
 import { useSkinScan } from "@/context/SkinScanContext";
 import ProductRecommendations from "./ProductRecommendations";
+import ClinicalReportModal from "./ClinicalReportModal";
 import { PRODUCT_CATALOG } from "@/lib/youcam";
 
 interface AnalysisDashboardProps {
@@ -31,6 +33,7 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
   // Default to clean photo (no dots)
   const [showOverlays, setShowOverlays] = useState(false);
   const [selectedMetricFilter, setSelectedMetricFilter] = useState<string | null>(null);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   if (!data) {
     return (
@@ -105,14 +108,25 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
             </span>
           </div>
 
-          <Link
-            href="/scanner"
-            onClick={resetAnalysis}
-            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300"
-          >
-            <RotateCcw className="h-3 w-3" />
-            Retake
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowReportModal(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 hover:text-emerald-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:text-emerald-400 transition-colors"
+            >
+              <FileText className="h-3 w-3 text-emerald-600" />
+              Report
+            </button>
+
+            <Link
+              href="/scanner"
+              onClick={resetAnalysis}
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300"
+            >
+              <RotateCcw className="h-3 w-3" />
+              Retake
+            </Link>
+          </div>
         </div>
 
         {/* Hero Score Row */}
@@ -345,6 +359,14 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
           subtitle="Selected based on your photo. Tap 'Try on Face' to see the difference before buying."
         />
       </div>
+
+      {/* Clinical Report Dossier Modal */}
+      {showReportModal && (
+        <ClinicalReportModal
+          result={data}
+          onClose={() => setShowReportModal(false)}
+        />
+      )}
     </div>
   );
 }
