@@ -100,6 +100,9 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
               Skin Analysis Complete
             </span>
             <span className="text-xs text-slate-500">Skin Type: {data.skinType}</span>
+            <span className="hidden sm:inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              {data.engineDetails || "Optical Biometric CV"}
+            </span>
           </div>
 
           <Link
@@ -162,22 +165,29 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
 
       {/* 2. Interactive Photo & Skin Details */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
-        {/* Photo View with Optional Pin Highlights */}
+        {/* Photo View with Clean Portrait Default */}
         <div className="md:col-span-5 flex flex-col">
           <div className="flex items-center justify-between mb-2 px-1">
             <span className="text-xs font-semibold text-slate-500">Your Photo</span>
-            <button
-              type="button"
-              onClick={() => setShowOverlays(!showOverlays)}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-                showOverlays
-                  ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
-              }`}
-            >
-              <Eye className="h-3.5 w-3.5" />
-              {showOverlays ? "Hide Focus Points" : "Show Focus Points"}
-            </button>
+            {filteredLandmarks.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setShowOverlays(!showOverlays)}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                  showOverlays
+                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
+                }`}
+              >
+                <Eye className="h-3.5 w-3.5" />
+                {showOverlays ? "Hide Detected Spots" : `Inspect Spots (${filteredLandmarks.length})`}
+              </button>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+                <CheckCircle2 className="h-3 w-3" />
+                Clear Complexion
+              </span>
+            )}
           </div>
 
           <div className="relative aspect-[4/5] w-full max-w-sm mx-auto rounded-2xl overflow-hidden bg-slate-950 shadow-md ring-1 ring-slate-800">
@@ -188,7 +198,7 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
               className="h-full w-full object-cover"
             />
 
-            {/* Render markers only if user explicitly turns them on */}
+            {/* Render genuine detected spot markers only if present and user explicitly enables */}
             {showOverlays &&
               filteredLandmarks.map((lm) => {
                 const isActive = activeMarkerId === lm.id;
@@ -222,7 +232,7 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
                 );
               })}
 
-            {/* Popup info when a dot is clicked */}
+            {/* Popup info when a genuine spot is clicked */}
             {activeLandmark && showOverlays && (
               <div className="absolute bottom-2 left-2 right-2 z-30 rounded-xl bg-slate-900/95 backdrop-blur-md p-3 text-white shadow-xl border border-slate-700 animate-in fade-in">
                 <div className="flex items-center justify-between mb-1">
@@ -239,13 +249,13 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
             )}
           </div>
           <p className="text-[11px] text-center text-slate-400 mt-1.5">
-            {showOverlays
-              ? "Tap any highlighted point to see localized details."
-              : "Clean photo view. Tap 'Show Focus Points' above to inspect detected regions."}
+            {filteredLandmarks.length > 0 && showOverlays
+              ? "Tap any marked spot above to see genuine pigment density."
+              : "Clean natural portrait. Zero artificial marks placed on your skin."}
           </p>
         </div>
 
-        {/* 3. The 4 Key Metrics: Tap to filter products directly */}
+        {/* 3. The Key Metrics: Tap to filter products directly */}
         <div className="md:col-span-7 flex flex-col space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
@@ -270,10 +280,6 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
                   type="button"
                   onClick={() => {
                     setSelectedMetricFilter(isSelected ? null : metric.id);
-                    if (!isSelected) {
-                      // Automatically enable overlay for the selected concern
-                      setShowOverlays(true);
-                    }
                   }}
                   className={`p-3 rounded-xl border text-left transition-all ${
                     isSelected

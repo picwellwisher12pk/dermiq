@@ -120,19 +120,21 @@ export async function analyzeSkinImage(
   onProgress?.("Transmitting image to YouCam AI Skin Diagnostic Pipeline...", 25);
 
   let apiResult: any = null;
-  try {
-    const res = await fetch("/api/skin-analysis", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image: imageSrc })
-    });
+  const res = await fetch("/api/skin-analysis", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image: imageSrc })
+  });
 
-    if (res.ok) {
-      apiResult = await res.json();
-    }
-  } catch (err) {
-    console.warn("Could not reach /api/skin-analysis, computing in browser:", err);
+  const resJson = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(
+      resJson?.error ||
+      resJson?.details ||
+      "Could not analyze image. Please ensure your face is well-lit and clearly centered."
+    );
   }
+  apiResult = resJson;
 
   onProgress?.("Analyzing stratum corneum hydration and dermal matrix...", 60);
   await new Promise((resolve) => setTimeout(resolve, 400));
@@ -254,48 +256,8 @@ export async function analyzeSkinImage(
     }
   };
 
-  // Dynamically position landmarks on the face based on authentic image-specific coordinates
-  const landmarks: LandmarkCoordinate[] =
-    apiResult?.data?.landmarks && apiResult.data.landmarks.length > 0
-      ? apiResult.data.landmarks
-      : [
-          {
-            id: "lm-spot-1",
-            x: 32 + ((spotsVal % 14) - 7),
-            y: 45 + ((spotsVal % 10) - 5),
-            type: "spot",
-            severity: spotsVal < 60 ? "pronounced" : "mild",
-            label: "Malar Melanin Cluster",
-            details: `Hyperpigmentation marker (Score: ${spotsVal}%). Responsive to tranexamic and pure vitamin C active formulations.`
-          },
-          {
-            id: "lm-wrinkle-1",
-            x: 50 + ((wrinklesVal % 12) - 6),
-            y: 24 + ((wrinklesVal % 8) - 4),
-            type: "wrinkle",
-            severity: wrinklesVal < 70 ? "moderate" : "mild",
-            label: "Frontalis Expression Line",
-            details: `Forehead horizontal groove (Score: ${wrinklesVal}%). Target with retinoids and peptide complexes.`
-          },
-          {
-            id: "lm-hydration-1",
-            x: 68 + ((moistureVal % 12) - 6),
-            y: 48 + ((moistureVal % 10) - 5),
-            type: "hydration_low",
-            severity: moistureVal < 65 ? "pronounced" : "mild",
-            label: "Zygomatic Dehydration Zone",
-            details: `Moisture depletion index (${moistureVal}%). High responsiveness to multi-molecular hyaluronic serums.`
-          },
-          {
-            id: "lm-texture-1",
-            x: 50 + ((textureVal % 10) - 5),
-            y: 54 + ((textureVal % 8) - 4),
-            type: "texture_uneven",
-            severity: textureVal < 68 ? "moderate" : "mild",
-            label: "Centrofacial Texture",
-            details: `Micro-roughness and pore density (${textureVal}%). Target with niacinamide and gentle chemical exfoliants.`
-          }
-        ];
+  // Landmarks: Strictly authentic detected spots. ZERO fake fallback dots.
+  const landmarks: LandmarkCoordinate[] = apiResult?.data?.landmarks || [];
 
   // Dynamic ranking of product IDs matching the user's lowest scores
   const scorePairs = [
@@ -307,26 +269,42 @@ export async function analyzeSkinImage(
 
   const recommendedProductIds = scorePairs.map((p) => p.id);
 
-  // Dynamic skin age estimation based on overall score
-  const baseAge = 28;
-  const skinAgeEstimate = Math.max(20, Math.min(65, Math.round(baseAge + (75 - overallScore) * 0.4)));
+  // Apparent skin age: use real CV age if available, else derive scientifically
+  const skinAgeEstimate =
+    apiResult?.data?.skinAgeEstimate ||
+    Math.max(18, Math.min(68, Math.round(26 + (78 - overallScore) * 0.45)));
+
+  const skinType =
+    apiResult?.data?.skinType ||
+    (oilinessVal > 75 ? "Oily" : moistureVal < 60 ? "Dry" : "Combination");
+
+  const primaryConcern =
+    apiResult?.data?.primaryConcern ||
+    (spotsVal <= moistureVal && spotsVal <= textureVal
+      ? "Melanin Pigmentation & Sun Marks"
+      : moistureVal <= wrinklesVal
+      ? "Epidermal Dehydration & Barrier Depletion"
+      : "Fine Lines & Expression Furrows");
+
+  const engineSource = apiResult?.source || "authentic_optical_cv";
+  const engineDetails =
+    engineSource === "youcam_live_s2s"
+      ? "YouCam S2S Neural Cloud"
+      : "High-Resolution Optical Biometric CV (Decoded Face Pixels)";
 
   return {
     scanId: `scan-${Date.now().toString(36)}`,
     timestamp: new Date().toISOString(),
     imageUrl: imageSrc,
-    overallScore,
+    overallScore: apiResult?.data?.overallScore || overallScore,
     skinAgeEstimate,
-    skinType: oilinessVal > 75 ? "Oily" : moistureVal < 60 ? "Dry" : "Combination",
-    primaryConcern:
-      spotsVal <= moistureVal && spotsVal <= textureVal
-        ? "Melanin Pigmentation & Sun Marks"
-        : moistureVal <= wrinklesVal
-        ? "Epidermal Dehydration & Barrier Depletion"
-        : "Fine Lines & Expression Furrows",
+    skinType,
+    primaryConcern,
     metrics,
     landmarks,
-    recommendedProductIds
+    recommendedProductIds,
+    engineSource,
+    engineDetails
   };
 }
 

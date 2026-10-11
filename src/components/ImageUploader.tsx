@@ -184,8 +184,8 @@ export default function ImageUploader({ onScanComplete }: ImageUploaderProps) {
       } else {
         router.push("/dashboard");
       }
-    } catch (err) {
-      setErrorMessage("Could not analyze image. Please try again.");
+    } catch (err: any) {
+      setErrorMessage(err?.message || "Could not analyze image. Please try again with a clear selfie.");
     }
   };
 

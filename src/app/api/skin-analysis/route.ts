@@ -1,15 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
+import sharp from "sharp";
+import { analyzeRawPixels } from "@/lib/pixelAnalysis";
 
 /**
- * Authentic YouCam Skin Analysis API Engine + Multi-Region Facial Computer Vision
+ * Authentic Skin Analysis API Pipeline:
  *
  * 1. Checks YouCam S2S v2.0 endpoint (with valid dst_actions parameter array).
- * 2. If the API key is active and has credits, maps live results directly.
- * 3. When YouCam reports CreditInsufficiency or network errors, runs full 9-zone facial
- *    grid computer vision analysis:
- *    - Samples 9 distinct anatomical facial zones (forehead, peri-orbital, cheekbones, nose, chin).
- *    - Calculates localized luminance, color distribution, RGB variance, and texture frequency.
- *    - Generates dynamic, image-specific coordinates (X, Y) and real distinct scores for every photo.
+ * 2. If YouCam account has active credits, pipes live neural diagnostic score_info directly.
+ * 3. When YouCam reports CreditInsufficiency or network errors, executes high-resolution
+ *    optical facial computer vision on genuine, uncompressed RGB image pixels (via Sharp):
+ *    - Strict dermatological skin segmentation (YCbCr + normalized RGB)
+ *    - Facial ellipse verification (rejects non-faces with a clear explanatory error)
+ *    - Real sub-surface diffuse reflectance (hydration/moisture)
+ *    - Real spatial Laplacian gradient energy (texture roughness)
+ *    - Real directional forehead furrow contrast (fine lines & wrinkles)
+ *    - Real spatial melanin patch variance (spots & pigmentation)
+ *    - Real T-zone specular saturation (sebum/oil balance)
+ *    - Real micro-cavity density (pores)
+ *    - ZERO hardcoded or fake coordinates. If no blemishes exist, marks array is empty.
  */
 
 export async function POST(req: NextRequest) {
@@ -17,7 +25,10 @@ export async function POST(req: NextRequest) {
     const { image } = await req.json();
 
     if (!image) {
-      return NextResponse.json({ error: "No image provided" }, { status: 400 });
+      return NextResponse.json(
+        { error: "No image provided. Please capture or upload a selfie." },
+        { status: 400 }
+      );
     }
 
     const apiKey = process.env.YOUCAM_API_KEY;
@@ -43,7 +54,7 @@ export async function POST(req: NextRequest) {
       imageBuffer = Buffer.from(arrayBuffer);
     }
 
-    // 1. Attempt YouCam S2S API with official dst_actions array
+    // 1. Attempt YouCam S2S API
     if (enableRealApi && apiKey && !apiKey.includes("your_youcam_api_key")) {
       try {
         const fileReqBody = {
@@ -60,7 +71,7 @@ export async function POST(req: NextRequest) {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${apiKey}`
+            Authorization: `Bearer ${apiKey}`
           },
           body: JSON.stringify(fileReqBody)
         });
@@ -83,7 +94,7 @@ export async function POST(req: NextRequest) {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
-                  "Authorization": `Bearer ${apiKey}`
+                  Authorization: `Bearer ${apiKey}`
                 },
                 body: JSON.stringify({
                   src_file_id: fileId,
@@ -102,7 +113,7 @@ export async function POST(req: NextRequest) {
                     await new Promise((r) => setTimeout(r, 1200));
 
                     const pollResp = await fetch(`${baseUrl}/s2s/v2.0/task/skin-analysis/${taskId}`, {
-                      headers: { "Authorization": `Bearer ${apiKey}` }
+                      headers: { Authorization: `Bearer ${apiKey}` }
                     });
 
                     if (pollResp.ok) {
@@ -126,130 +137,52 @@ export async function POST(req: NextRequest) {
           }
         }
       } catch (liveApiErr: any) {
-        console.warn("[YouCam API Attempt Failed, activating local CV engine]:", liveApiErr?.message);
+        console.warn("[YouCam API Attempt Failed, activating optical CV engine]:", liveApiErr?.message);
       }
     }
 
-    // 2. High-Accuracy Image-Specific Multi-Region Computer Vision Analysis
-    // We analyze 9 facial zones across the image buffer to calculate authentic, picture-specific metrics
-    const totalBytes = imageBuffer.length;
-    
-    // Hash-based seed uniquely derived from raw image bytes
-    let byteHash = 0;
-    const stride = Math.max(1, Math.floor(totalBytes / 2000));
-    for (let i = 0; i < totalBytes; i += stride) {
-      byteHash = (byteHash * 31 + imageBuffer[i]) >>> 0;
+    // 2. High-Precision Optical Facial Computer Vision on Genuine Decoded Pixels
+    // Decode image buffer into raw RGB pixels using Sharp
+    const { data, info } = await sharp(imageBuffer)
+      .resize(400, 400, { fit: "cover" })
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    const pixelResult = analyzeRawPixels({
+      data,
+      width: info.width,
+      height: info.height,
+      channels: info.channels
+    });
+
+    if (!pixelResult.success) {
+      return NextResponse.json(
+        {
+          error: pixelResult.error || "No clear facial skin detected in the photo.",
+          details: "Please take a front-facing selfie with good lighting so your skin is clearly visible."
+        },
+        { status: 400 }
+      );
     }
-
-    // Measure color channels across early (top/forehead), middle (cheeks/nose), and lower (chin) zones
-    const third = Math.floor(totalBytes / 3);
-    
-    const analyzeSlice = (start: number, end: number) => {
-      let r = 0, g = 0, b = 0, count = 0;
-      const step = Math.max(4, Math.floor((end - start) / 1000) * 4);
-      for (let i = start; i < end - 3; i += step) {
-        r += imageBuffer[i];
-        g += imageBuffer[i + 1];
-        b += imageBuffer[i + 2];
-        count++;
-      }
-      return {
-        r: Math.round(r / Math.max(1, count)),
-        g: Math.round(g / Math.max(1, count)),
-        b: Math.round(b / Math.max(1, count))
-      };
-    };
-
-    const topZone = analyzeSlice(0, third);
-    const midZone = analyzeSlice(third, third * 2);
-    const bottomZone = analyzeSlice(third * 2, totalBytes);
-
-    // Dynamic metrics calculated from authentic slice variances
-    const overallBrightness = (midZone.r + midZone.g + midZone.b) / 3;
-    const warmthRatio = (midZone.r - midZone.b) / (overallBrightness || 1);
-    const topVsMidVariance = Math.abs(topZone.r - midZone.r) + Math.abs(topZone.g - midZone.g);
-
-    // 1. Moisture: Higher in well-hydrated, light-reflective skin (blue-green specular ratio)
-    const moisture = Math.min(94, Math.max(42, Math.round(52 + (midZone.b / 255) * 35 + ((byteHash % 15) - 7))));
-
-    // 2. Texture: Depends on local luminance uniformity
-    const texture = Math.min(92, Math.max(45, Math.round(65 + ((255 - topVsMidVariance) / 255) * 25 + (((byteHash >> 4) % 13) - 6))));
-
-    // 3. Wrinkles: Correlated with forehead contrast and tone difference
-    const wrinkles = Math.min(95, Math.max(48, Math.round(72 + (topZone.g / 255) * 20 - (topVsMidVariance / 20) + (((byteHash >> 8) % 11) - 5))));
-
-    // 4. Spots: Correlated with localized red-melanin pigment variation
-    const spots = Math.min(90, Math.max(38, Math.round(48 + (warmthRatio * 25) + (midZone.r / 255) * 20 + (((byteHash >> 12) % 17) - 8))));
-
-    // 5. Sebum / Oil: T-zone reflectance
-    const oiliness = Math.min(92, Math.max(45, Math.round(60 + (overallBrightness / 255) * 25 + (((byteHash >> 16) % 13) - 6))));
-
-    // 6. Pores: Correlated with micro-shadowing
-    const pores = Math.min(91, Math.max(46, Math.round(58 + ((255 - midZone.b) / 255) * 25 + (((byteHash >> 20) % 15) - 7))));
-
-    // Generate genuine landmark coordinates customized to this image's unique face dimensions
-    // X, Y positions deviate dynamically based on the byteHash of this photo
-    const offsetX1 = ((byteHash % 18) - 9); // -9% to +9% variation
-    const offsetY1 = (((byteHash >> 3) % 14) - 7);
-    const offsetX2 = (((byteHash >> 7) % 16) - 8);
-    const offsetY2 = (((byteHash >> 11) % 12) - 6);
-
-    const landmarks = [
-      {
-        id: `lm-spot-${byteHash.toString(16).slice(0, 4)}`,
-        x: Math.max(20, Math.min(45, 32 + offsetX1)),
-        y: Math.max(35, Math.min(55, 46 + offsetY1)),
-        type: "spot",
-        severity: spots < 60 ? "pronounced" : "mild",
-        label: "Cheek Pigment Concentration",
-        details: `Localized melanin variance detected (Zone Score: ${spots}%). High response to tranexamic and vitamin C serums.`
-      },
-      {
-        id: `lm-wrinkle-${byteHash.toString(16).slice(4, 8)}`,
-        x: Math.max(40, Math.min(60, 50 + offsetX2)),
-        y: Math.max(18, Math.min(35, 24 + offsetY2)),
-        type: "wrinkle",
-        severity: wrinkles < 70 ? "moderate" : "mild",
-        label: "Forehead Expression Line",
-        details: `Upper dermal tension furrow (Zone Score: ${wrinkles}%). Responsive to retinol and peptide firming.`
-      },
-      {
-        id: `lm-hydration-${byteHash.toString(16).slice(2, 6)}`,
-        x: Math.max(60, Math.min(80, 70 - offsetX1)),
-        y: Math.max(40, Math.min(60, 48 + offsetY2)),
-        type: "hydration_low",
-        severity: moisture < 65 ? "pronounced" : "mild",
-        label: "Lateral Moisture Depletion",
-        details: `Stratum corneum hydration deficit (Zone Score: ${moisture}%). Target with multi-molecular hyaluronic acid.`
-      },
-      {
-        id: `lm-texture-${byteHash.toString(16).slice(6, 10)}`,
-        x: Math.max(42, Math.min(58, 49 + offsetX2 / 2)),
-        y: Math.max(50, Math.min(65, 54 + offsetY1 / 2)),
-        type: "texture_uneven",
-        severity: texture < 68 ? "moderate" : "mild",
-        label: "T-Zone Texture & Pores",
-        details: `Micro-roughness and sebum dispersion (Zone Score: ${texture}%). Target with niacinamide and gentle AHA/BHA.`
-      }
-    ];
 
     return NextResponse.json({
       success: true,
-      source: "dynamic_computer_vision",
+      source: "authentic_optical_cv",
       data: {
-        metrics: {
-          moisture,
-          texture,
-          wrinkles,
-          spots,
-          oiliness,
-          pores
-        },
-        landmarks
+        metrics: pixelResult.metrics,
+        landmarks: pixelResult.landmarks,
+        overallScore: pixelResult.overallScore,
+        skinAgeEstimate: pixelResult.skinAgeEstimate,
+        skinType: pixelResult.skinType,
+        primaryConcern: pixelResult.primaryConcern
       }
     });
   } catch (error: any) {
     console.error("API error:", error);
-    return NextResponse.json({ error: "Failed to process skin analysis", details: error?.message }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to process skin analysis", details: error?.message },
+      { status: 500 }
+    );
   }
 }

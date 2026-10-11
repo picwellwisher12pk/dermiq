@@ -55,4 +55,6 @@ export interface SkinAnalysisResult {
   metrics: Record<string, SkinMetric>;
   landmarks: LandmarkCoordinate[];
   recommendedProductIds: string[];
+  engineSource?: "youcam_live_s2s" | "authentic_optical_cv";
+  engineDetails?: string;
 }
