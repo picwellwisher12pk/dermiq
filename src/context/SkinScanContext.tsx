@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { SkinAnalysisResult, RecommendedProduct } from "@/types/skin";
-import { analyzeSkinImage, getProductById, PRODUCT_CATALOG } from "@/lib/youcam";
+import { analyzeSkinImage, getProductById, PRODUCT_CATALOG, AnalyzeSkinOptions } from "@/lib/youcam";
 
 interface SkinScanContextType {
   uploadedImage: string | null;
@@ -11,7 +11,7 @@ interface SkinScanContextType {
   analysisResult: SkinAnalysisResult | null;
   activeVtoProduct: RecommendedProduct | null;
   selectedMetricFilter: string | null;
-  startAnalysis: (imageSrc: string) => Promise<SkinAnalysisResult>;
+  startAnalysis: (imageSrc: string, options?: AnalyzeSkinOptions) => Promise<SkinAnalysisResult>;
   resetAnalysis: () => void;
   openVtoModal: (product: RecommendedProduct) => void;
   closeVtoModal: () => void;
@@ -47,15 +47,22 @@ export function SkinScanProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const startAnalysis = async (imageSrc: string): Promise<SkinAnalysisResult> => {
+  const startAnalysis = async (
+    imageSrc: string,
+    options?: AnalyzeSkinOptions
+  ): Promise<SkinAnalysisResult> => {
     setIsAnalyzing(true);
     setUploadedImage(imageSrc);
     setAnalysisProgress({ stage: "Initializing YouCam Neural Skin Engine...", percent: 5 });
 
     try {
-      const result = await analyzeSkinImage(imageSrc, (stage, percent) => {
-        setAnalysisProgress({ stage, percent });
-      });
+      const result = await analyzeSkinImage(
+        imageSrc,
+        (stage, percent) => {
+          setAnalysisProgress({ stage, percent });
+        },
+        options
+      );
 
       setAnalysisResult(result);
       try {

@@ -113,9 +113,15 @@ export const PRODUCT_CATALOG: RecommendedProduct[] = [
  * 2. If YouCam S2S returns live score_info, uses real clinical scores and masks
  * 3. If live API is disabled or times out, computes dynamic computer vision metrics directly from the user's uploaded portrait image bytes (ensuring no static/fake numbers)
  */
+export interface AnalyzeSkinOptions {
+  mode?: "single" | "multi_angle" | "macro_zones";
+  images?: { front: string; left?: string; right?: string };
+}
+
 export async function analyzeSkinImage(
   imageSrc: string,
-  onProgress?: (stage: string, percent: number) => void
+  onProgress?: (stage: string, percent: number) => void,
+  options?: AnalyzeSkinOptions
 ): Promise<SkinAnalysisResult> {
   onProgress?.("Transmitting image to YouCam AI Skin Diagnostic Pipeline...", 25);
 
@@ -123,7 +129,11 @@ export async function analyzeSkinImage(
   const res = await fetch("/api/skin-analysis", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image: imageSrc })
+    body: JSON.stringify({
+      image: imageSrc,
+      mode: options?.mode || "single",
+      images: options?.images
+    })
   });
 
   const resJson = await res.json().catch(() => ({}));
@@ -296,6 +306,9 @@ export async function analyzeSkinImage(
     scanId: `scan-${Date.now().toString(36)}`,
     timestamp: new Date().toISOString(),
     imageUrl: imageSrc,
+    scanMode: apiResult?.data?.scanMode || options?.mode || "single",
+    angles: apiResult?.data?.angles,
+    macroZones: apiResult?.data?.macroZones,
     overallScore: apiResult?.data?.overallScore || overallScore,
     skinAgeEstimate,
     skinType,

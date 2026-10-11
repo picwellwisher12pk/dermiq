@@ -44,10 +44,27 @@ export interface RecommendedProduct {
   };
 }
 
+export interface AngleScanData {
+  angle: "front" | "left" | "right";
+  imageUrl: string;
+  score: number;
+}
+
+export interface MacroZoneData {
+  id: "forehead" | "left_cheek" | "right_cheek" | "t_zone";
+  label: string;
+  imageUrl: string;
+  score: number;
+  description: string;
+}
+
 export interface SkinAnalysisResult {
   scanId: string;
   timestamp: string;
   imageUrl: string;
+  scanMode?: "single" | "multi_angle" | "macro_zones";
+  angles?: AngleScanData[];
+  macroZones?: MacroZoneData[];
   overallScore: number; // 0 - 100
   skinAgeEstimate: number;
   skinType: "Dry" | "Normal" | "Combination" | "Oily" | "Sensitive";

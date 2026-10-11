@@ -13,7 +13,8 @@ import {
   Camera,
   Eye,
   SlidersHorizontal,
-  FileText
+  FileText,
+  ScanLine
 } from "lucide-react";
 import { SkinAnalysisResult } from "@/types/skin";
 import { useSkinScan } from "@/context/SkinScanContext";
@@ -34,6 +35,7 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
   const [showOverlays, setShowOverlays] = useState(false);
   const [selectedMetricFilter, setSelectedMetricFilter] = useState<string | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [selectedAnglePhoto, setSelectedAnglePhoto] = useState<string | null>(null);
 
   if (!data) {
     return (
@@ -182,7 +184,9 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
         {/* Photo View with Clean Portrait Default */}
         <div className="md:col-span-5 flex flex-col">
           <div className="flex items-center justify-between mb-2 px-1">
-            <span className="text-xs font-semibold text-slate-500">Your Photo</span>
+            <span className="text-xs font-semibold text-slate-500">
+              {data.scanMode === "multi_angle" ? "360° Facial Profile" : "Your Photo"}
+            </span>
             {filteredLandmarks.length > 0 ? (
               <button
                 type="button"
@@ -204,10 +208,36 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
             )}
           </div>
 
+          {/* Angle Switcher (When in Multi-Angle mode) */}
+          {data.angles && data.angles.length > 1 && (
+            <div className="flex bg-slate-100 p-1 rounded-xl dark:bg-slate-800 mb-2 gap-1 border border-slate-200/60 dark:border-slate-700/60">
+              {data.angles.map((ang) => {
+                const isCurrent = (selectedAnglePhoto || data.imageUrl) === ang.imageUrl;
+                return (
+                  <button
+                    key={ang.angle}
+                    type="button"
+                    onClick={() => setSelectedAnglePhoto(ang.imageUrl)}
+                    className={`flex-1 py-1 px-1.5 rounded-lg text-xs font-bold transition-all text-center ${
+                      isCurrent
+                        ? "bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white"
+                        : "text-slate-500 hover:text-slate-900 dark:text-slate-400"
+                    }`}
+                  >
+                    {ang.angle === "front" ? "Front" : ang.angle === "left" ? "Left 45°" : "Right 45°"}
+                    <span className="text-[10px] ml-1 font-mono text-emerald-600 dark:text-emerald-400 font-extrabold">
+                      {ang.score}%
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           <div className="relative aspect-[4/5] w-full max-w-sm mx-auto rounded-2xl overflow-hidden bg-slate-950 shadow-md ring-1 ring-slate-800">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={data.imageUrl}
+              src={selectedAnglePhoto || data.imageUrl}
               alt="Your portrait"
               className="h-full w-full object-cover"
             />
@@ -346,6 +376,46 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
           </div>
         </div>
       </div>
+
+      {/* 3. Targeted Macro Dermal Zones (When in Macro Scan Mode) */}
+      {data.macroZones && data.macroZones.length > 0 && (
+        <div className="rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <span className="text-[10px] uppercase font-bold text-teal-600 dark:text-teal-400 block">
+                1:1 Optical Detail
+              </span>
+              <h4 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                <ScanLine className="h-4 w-4 text-teal-600" />
+                Targeted Facial Macro Zones
+              </h4>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            {data.macroZones.map((z) => (
+              <div
+                key={z.id}
+                className="rounded-xl border border-slate-200 p-2.5 bg-slate-50/60 dark:border-slate-800 dark:bg-slate-800/40 flex flex-col"
+              >
+                <div className="relative aspect-square w-full rounded-lg overflow-hidden bg-slate-950 mb-2 border border-slate-200 dark:border-slate-700">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={z.imageUrl} alt={z.label} className="h-full w-full object-cover" />
+                  <div className="absolute top-1 right-1 bg-slate-950/85 px-1.5 py-0.5 rounded text-[10px] font-black text-emerald-400 font-mono">
+                    {z.score}%
+                  </div>
+                </div>
+                <span className="text-[11px] font-bold text-slate-900 dark:text-white truncate">
+                  {z.label}
+                </span>
+                <p className="text-[10px] text-slate-500 mt-1 leading-snug flex-1 line-clamp-2">
+                  {z.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 4. Products You Need: Tailored to your photo */}
       <div className="pt-4 border-t border-slate-200 dark:border-slate-800">

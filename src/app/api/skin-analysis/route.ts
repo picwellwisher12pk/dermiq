@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
-import { analyzeRawPixels } from "@/lib/pixelAnalysis";
+import { analyzeRawPixels, extractAndAnalyzeMacroZones, mergeMultiAngleResults } from "@/lib/pixelAnalysis";
 
 /**
  * Authentic Skin Analysis API Pipeline:
@@ -22,7 +22,9 @@ import { analyzeRawPixels } from "@/lib/pixelAnalysis";
 
 export async function POST(req: NextRequest) {
   try {
-    const { image } = await req.json();
+    const body = await req.json();
+    const { mode = "single", images } = body;
+    const image = body.image || images?.front;
 
     if (!image) {
       return NextResponse.json(
@@ -142,7 +144,113 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. High-Precision Optical Facial Computer Vision on Genuine Decoded Pixels
-    // Decode image buffer into raw RGB pixels using Sharp
+    // A. Mode: Macro Zones Analysis (Full image + 4 high-res localized crops)
+    if (mode === "macro_zones") {
+      const { data, info } = await sharp(imageBuffer)
+        .resize(400, 400, { fit: "cover" })
+        .removeAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+
+      const pixelResult = analyzeRawPixels({
+        data,
+        width: info.width,
+        height: info.height,
+        channels: info.channels
+      });
+
+      if (!pixelResult.success) {
+        return NextResponse.json(
+          {
+            error: pixelResult.error || "No clear facial skin detected in the photo.",
+            details: "Please ensure your face is well-lit and clearly visible inside the oval."
+          },
+          { status: 400 }
+        );
+      }
+
+      const macroZones = await extractAndAnalyzeMacroZones(imageBuffer);
+
+      return NextResponse.json({
+        success: true,
+        source: "authentic_optical_cv",
+        data: {
+          scanMode: "macro_zones",
+          macroZones,
+          metrics: pixelResult.metrics,
+          landmarks: pixelResult.landmarks,
+          overallScore: pixelResult.overallScore,
+          skinAgeEstimate: pixelResult.skinAgeEstimate,
+          skinType: pixelResult.skinType,
+          primaryConcern: pixelResult.primaryConcern
+        }
+      });
+    }
+
+    // B. Mode: Multi-Angle Clinical Scan (Front, Left Profile, Right Profile)
+    if (mode === "multi_angle" && images && (images.left || images.right)) {
+      const parseBuffer = async (imgStr: string) => {
+        if (imgStr.startsWith("data:")) {
+          const match = imgStr.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+          if (match) return Buffer.from(match[2], "base64");
+        }
+        const resp = await fetch(imgStr);
+        return Buffer.from(await resp.arrayBuffer());
+      };
+
+      const frontBuf = imageBuffer;
+      const leftBuf = images.left ? await parseBuffer(images.left) : null;
+      const rightBuf = images.right ? await parseBuffer(images.right) : null;
+
+      const analyzeBuf = async (buf: Buffer) => {
+        const { data, info } = await sharp(buf)
+          .resize(400, 400, { fit: "cover" })
+          .removeAlpha()
+          .raw()
+          .toBuffer({ resolveWithObject: true });
+        return analyzeRawPixels({ data, width: info.width, height: info.height, channels: info.channels });
+      };
+
+      const frontRes = await analyzeBuf(frontBuf);
+      if (!frontRes.success) {
+        return NextResponse.json(
+          { error: "Front photo did not detect a clear face. Please center your face." },
+          { status: 400 }
+        );
+      }
+
+      const leftRes = leftBuf ? await analyzeBuf(leftBuf) : undefined;
+      const rightRes = rightBuf ? await analyzeBuf(rightBuf) : undefined;
+
+      const composite = mergeMultiAngleResults(frontRes, leftRes, rightRes);
+
+      const angles = [
+        { angle: "front" as const, imageUrl: image, score: frontRes.overallScore },
+        ...(images.left && leftRes?.success
+          ? [{ angle: "left" as const, imageUrl: images.left, score: leftRes.overallScore }]
+          : []),
+        ...(images.right && rightRes?.success
+          ? [{ angle: "right" as const, imageUrl: images.right, score: rightRes.overallScore }]
+          : [])
+      ];
+
+      return NextResponse.json({
+        success: true,
+        source: "authentic_optical_cv",
+        data: {
+          scanMode: "multi_angle",
+          angles,
+          metrics: composite.metrics,
+          landmarks: frontRes.landmarks,
+          overallScore: composite.overallScore,
+          skinAgeEstimate: frontRes.skinAgeEstimate,
+          skinType: frontRes.skinType,
+          primaryConcern: composite.primaryConcern
+        }
+      });
+    }
+
+    // C. Mode: Standard Single Selfie
     const { data, info } = await sharp(imageBuffer)
       .resize(400, 400, { fit: "cover" })
       .removeAlpha()
@@ -170,6 +278,7 @@ export async function POST(req: NextRequest) {
       success: true,
       source: "authentic_optical_cv",
       data: {
+        scanMode: "single",
         metrics: pixelResult.metrics,
         landmarks: pixelResult.landmarks,
         overallScore: pixelResult.overallScore,
