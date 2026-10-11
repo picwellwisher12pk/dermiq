@@ -143,31 +143,39 @@ export async function analyzeSkinImage(
   onProgress?.("Synthesizing personalized formulation prescription...", 98);
   await new Promise((resolve) => setTimeout(resolve, 300));
 
-  // Extract metrics from live YouCam API response or image-derived dynamic computer vision
-  let moistureVal = 65;
-  let textureVal = 72;
-  let wrinklesVal = 78;
-  let spotsVal = 62;
-  let oilinessVal = 68;
-  let poresVal = 66;
+  if (!apiResult || (!apiResult?.data?.metrics && !apiResult?.data?.score_info)) {
+    throw new Error(
+      apiResult?.error ||
+      "Could not complete skin analysis. Please ensure an active API connection or upload a clear, front-facing portrait."
+    );
+  }
+
+  // Extract metrics strictly from authentic API response or computer vision calculation
+  let moistureVal: number = 0;
+  let textureVal: number = 0;
+  let wrinklesVal: number = 0;
+  let spotsVal: number = 0;
+  let oilinessVal: number = 0;
+  let poresVal: number = 0;
 
   if (apiResult?.data?.metrics) {
     const m = apiResult.data.metrics;
-    moistureVal = m.moisture ?? moistureVal;
-    textureVal = m.texture ?? textureVal;
-    wrinklesVal = m.wrinkles ?? wrinklesVal;
-    spotsVal = m.spots ?? spotsVal;
-    oilinessVal = m.oiliness ?? oilinessVal;
-    poresVal = m.pores ?? poresVal;
+    moistureVal = m.moisture;
+    textureVal = m.texture;
+    wrinklesVal = m.wrinkles;
+    spotsVal = m.spots;
+    oilinessVal = m.oiliness;
+    poresVal = m.pores;
   } else if (apiResult?.data?.score_info) {
-    // YouCam S2S official score_info.json fields
     const si = apiResult.data.score_info;
-    moistureVal = Math.round(si.moisture?.ui_score ?? si.moisture ?? 65);
-    wrinklesVal = Math.round(si.wrinkle?.ui_score ?? si.wrinkle ?? 78);
-    spotsVal = Math.round(si.age_spot?.ui_score ?? si.spots ?? 62);
-    textureVal = Math.round(si.texture?.ui_score ?? si.texture ?? 72);
-    oilinessVal = Math.round(si.oiliness?.ui_score ?? si.oiliness ?? 68);
-    poresVal = Math.round(si.pore?.ui_score ?? si.pore ?? 66);
+    moistureVal = Math.round(si.moisture?.ui_score ?? si.moisture);
+    wrinklesVal = Math.round(si.wrinkle?.ui_score ?? si.wrinkle);
+    spotsVal = Math.round(si.age_spot?.ui_score ?? si.spots);
+    textureVal = Math.round(si.texture?.ui_score ?? si.texture);
+    oilinessVal = Math.round(si.oiliness?.ui_score ?? si.oiliness);
+    poresVal = Math.round(si.pore?.ui_score ?? si.pore);
+  } else {
+    throw new Error("Invalid analysis payload: missing required biometric score matrices.");
   }
 
   const overallScore = Math.round(
